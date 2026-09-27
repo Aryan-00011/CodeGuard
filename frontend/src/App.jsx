@@ -26,6 +26,13 @@ import "./App.css";
 
 
 // =====================================================
+// PRODUCTION BACKEND URL
+// =====================================================
+
+const API_URL = "https://codeguard-backendd.onrender.com";
+
+
+// =====================================================
 // MAIN APP
 // =====================================================
 
@@ -177,6 +184,7 @@ function CodeGuardApp({
   const [menuChatId, setMenuChatId] =
     useState(null);
 
+
   // =====================================================
   // FILE UPLOAD
   // =====================================================
@@ -266,9 +274,7 @@ function CodeGuardApp({
       theme
     );
 
-    if (
-      theme === "light"
-    ) {
+    if (theme === "light") {
 
       setDarkMode(false);
 
@@ -361,34 +367,19 @@ function CodeGuardApp({
         .toLowerCase();
 
 
-    // =================================================
-    // EXTENSION -> LANGUAGE
-    // =================================================
-
     const languageMap = {
 
       py: "Python",
-
       python: "Python",
-
       java: "Java",
-
       cpp: "C++",
-
       cc: "C++",
-
       cxx: "C++",
-
       c: "C",
-
       js: "JavaScript",
-
       jsx: "JavaScript",
-
       ts: "TypeScript",
-
       tsx: "TypeScript",
-
       cs: "C#"
 
     };
@@ -410,10 +401,6 @@ function CodeGuardApp({
     setAttachedFile(file);
 
 
-    // =================================================
-    // READ FILE
-    // =================================================
-
     const reader =
       new FileReader();
 
@@ -424,8 +411,7 @@ function CodeGuardApp({
         e.target?.result;
 
       if (
-        typeof fileContent ===
-        "string"
+        typeof fileContent === "string"
       ) {
 
         setMessage(
@@ -449,7 +435,6 @@ function CodeGuardApp({
 
 
     reader.readAsText(file);
-
 
     event.target.value = "";
 
@@ -523,9 +508,7 @@ function CodeGuardApp({
         .trim();
 
 
-    if (
-      title.length > 35
-    ) {
+    if (title.length > 35) {
 
       title =
         title.substring(0, 35) +
@@ -1751,9 +1734,23 @@ function CodeGuardApp({
       setLoading(true);
 
 
+      // =================================================
+      // PRODUCTION BACKEND REQUEST
+      // =================================================
+
+      const endpoint =
+        `${API_URL}/analyze`;
+
+
+      console.log(
+        "CodeGuard API:",
+        endpoint
+      );
+
+
       const response =
         await fetch(
-          "http://127.0.0.1:8000/analyze",
+          endpoint,
           {
 
             method: "POST",
@@ -1783,12 +1780,44 @@ function CodeGuardApp({
         );
 
 
+      console.log(
+        "Backend HTTP Status:",
+        response.status
+      );
+
+
       if (
         !response.ok
       ) {
 
+        let serverMessage =
+          `Server returned ${response.status}`;
+
+        try {
+
+          const errorData =
+            await response.json();
+
+          if (
+            errorData?.message
+          ) {
+
+            serverMessage =
+              errorData.message;
+
+          }
+
+        } catch (error) {
+
+          console.log(
+            "No JSON error response from backend."
+          );
+
+        }
+
+
         throw new Error(
-          `Server error: ${response.status}`
+          serverMessage
         );
 
       }
@@ -1818,7 +1847,7 @@ function CodeGuardApp({
 
             text:
               data.message ||
-              "No analysis result received."
+              "No analysis result received from backend."
 
           },
 
@@ -2104,7 +2133,29 @@ function CodeGuardApp({
     } catch (error) {
 
       console.error(
-        "Backend Error:",
+        "================================="
+      );
+
+      console.error(
+        "CODEGUARD BACKEND ERROR"
+      );
+
+      console.error(
+        "================================="
+      );
+
+      console.error(
+        "API URL:",
+        API_URL
+      );
+
+      console.error(
+        "Endpoint:",
+        `${API_URL}/analyze`
+      );
+
+      console.error(
+        "Error:",
         error
       );
 
@@ -2117,7 +2168,12 @@ function CodeGuardApp({
             "assistant",
 
           text:
-            "Unable to connect to CodeGuard backend. Please make sure the FastAPI server is running on http://127.0.0.1:8000."
+            `❌ Unable to connect to CodeGuard backend.
+
+Backend:
+${API_URL}
+
+Please check the browser console for the exact error.`
 
         },
 
@@ -2126,6 +2182,7 @@ function CodeGuardApp({
         chatId
 
       );
+
 
     } finally {
 
@@ -2572,13 +2629,7 @@ function CodeGuardApp({
       className={`app theme-${theme}`}
     >
 
-      {/* =================================================
-          SIDEBAR
-      ================================================= */}
-
       <aside className="sidebar">
-
-        {/* LOGO */}
 
         <div className="logo">
 
@@ -2592,8 +2643,6 @@ function CodeGuardApp({
 
         </div>
 
-
-        {/* NEW CHAT */}
 
         <button
           className="new-chat"
@@ -2610,8 +2659,6 @@ function CodeGuardApp({
 
         </button>
 
-
-        {/* SEARCH */}
 
         <button
           className="search-button"
@@ -2630,8 +2677,6 @@ function CodeGuardApp({
 
         </button>
 
-
-        {/* SEARCH BOX */}
 
         {searchOpen && (
 
@@ -2678,8 +2723,6 @@ function CodeGuardApp({
 
         )}
 
-
-        {/* HISTORY */}
 
         <div className="history">
 
@@ -2756,11 +2799,7 @@ function CodeGuardApp({
         </div>
 
 
-        {/* SIDEBAR BOTTOM */}
-
         <div className="sidebar-bottom">
-
-          {/* SETTINGS */}
 
           <button
             className="sidebar-button"
@@ -2779,8 +2818,6 @@ function CodeGuardApp({
 
           </button>
 
-
-          {/* PROFILE */}
 
           <button
             className="sidebar-button"
@@ -2804,13 +2841,7 @@ function CodeGuardApp({
       </aside>
 
 
-      {/* =================================================
-          MAIN
-      ================================================= */}
-
       <main className="main">
-
-        {/* TOPBAR */}
 
         <header className="topbar">
 
@@ -2839,13 +2870,7 @@ function CodeGuardApp({
         </header>
 
 
-        {/* =================================================
-            CHAT AREA
-        ================================================= */}
-
         <section className="chat-area">
-
-          {/* WELCOME */}
 
           {messages.length === 0 && (
 
@@ -2867,8 +2892,6 @@ function CodeGuardApp({
 
           )}
 
-
-          {/* MESSAGES */}
 
           {messages.length > 0 && (
 
@@ -2923,8 +2946,6 @@ function CodeGuardApp({
                       </div>
 
 
-                      {/* AI REVIEW */}
-
                       {msg.role ===
                         "assistant" &&
                         msg.aiReview && (
@@ -2974,8 +2995,6 @@ function CodeGuardApp({
 
                       )}
 
-
-                      {/* AI FIXED / SOLUTION CODE */}
 
                       {msg.role ===
                         "assistant" &&
@@ -3108,8 +3127,6 @@ function CodeGuardApp({
                       )}
 
 
-                      {/* REFACTORED CODE */}
-
                       {msg.role ===
                         "assistant" &&
                         msg.refactoredCode && (
@@ -3166,8 +3183,6 @@ function CodeGuardApp({
               )}
 
 
-              {/* LOADING */}
-
               {loading && (
 
                 <div className="message assistant">
@@ -3199,15 +3214,9 @@ function CodeGuardApp({
           )}
 
 
-          {/* =================================================
-              QUICK ACTIONS
-          ================================================= */}
-
           {messages.length === 0 && (
 
             <div className="quick-actions">
-
-              {/* FIND BUGS */}
 
               <button
                 className="quick-card"
@@ -3236,8 +3245,6 @@ function CodeGuardApp({
               </button>
 
 
-              {/* COMPLEXITY */}
-
               <button
                 className="quick-card"
                 onClick={() =>
@@ -3265,8 +3272,6 @@ function CodeGuardApp({
               </button>
 
 
-              {/* REFACTOR */}
-
               <button
                 className="quick-card"
                 onClick={() =>
@@ -3293,8 +3298,6 @@ function CodeGuardApp({
 
               </button>
 
-
-              {/* TESTS */}
 
               <button
                 className="quick-card"
@@ -3327,13 +3330,7 @@ function CodeGuardApp({
           )}
 
 
-          {/* =================================================
-              INPUT
-          ================================================= */}
-
           <div className="input-container">
-
-            {/* ATTACHED FILE */}
 
             {attachedFile && (
 
@@ -3462,8 +3459,6 @@ function CodeGuardApp({
 
             <div className="input-footer">
 
-              {/* ATTACH */}
-
               <button
                 className="icon-button"
                 title="Attach code file"
@@ -3480,8 +3475,6 @@ function CodeGuardApp({
               </button>
 
 
-              {/* HIDDEN INPUT */}
-
               <input
                 ref={fileInputRef}
                 type="file"
@@ -3495,8 +3488,6 @@ function CodeGuardApp({
                 }}
               />
 
-
-              {/* LANGUAGE */}
 
               <select
                 className="language-select"
@@ -3529,8 +3520,6 @@ function CodeGuardApp({
               </select>
 
 
-              {/* SEND */}
-
               <button
                 className="send-button"
                 onClick={
@@ -3550,8 +3539,6 @@ function CodeGuardApp({
 
           </div>
 
-
-          {/* DISCLAIMER */}
 
           <div className="disclaimer">
 
@@ -3726,8 +3713,6 @@ function CodeGuardApp({
               </p>
 
 
-              {/* LOGOUT */}
-
               <button
                 onClick={() => {
 
@@ -3872,8 +3857,6 @@ function CodeGuardApp({
             </div>
 
 
-            {/* DARK MODE */}
-
             <div
               style={{
                 display:
@@ -3927,8 +3910,6 @@ function CodeGuardApp({
 
             </div>
 
-
-            {/* THEME */}
 
             <div
               style={{
@@ -4012,8 +3993,6 @@ function CodeGuardApp({
             </div>
 
 
-            {/* LANGUAGE */}
-
             <div
               style={{
                 padding:
@@ -4076,8 +4055,6 @@ function CodeGuardApp({
 
             </div>
 
-
-            {/* CLEAR HISTORY */}
 
             <button
               onClick={() => {

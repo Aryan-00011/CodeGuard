@@ -12,388 +12,208 @@ import {
 
 import "./App.css";
 
+const API_URL = "https://codeguard-backendd.onrender.com";
 
 function Auth({ onLogin }) {
-
-  // =====================================================
-  // AUTH MODE
-  // login
-  // signup
-  // forgot
-  // reset
-  // =====================================================
-
   const [mode, setMode] = useState("login");
 
-  // =====================================================
-  // FORM STATES
-  // =====================================================
-
   const [name, setName] = useState("");
-
   const [email, setEmail] = useState("");
-
   const [password, setPassword] = useState("");
-
   const [resetToken, setResetToken] = useState("");
 
   const [showPassword, setShowPassword] = useState(false);
 
-  // =====================================================
-  // UI STATES
-  // =====================================================
-
   const [error, setError] = useState("");
-
   const [success, setSuccess] = useState("");
-
   const [loading, setLoading] = useState(false);
-
   const [resetLink, setResetLink] = useState("");
 
-
-  // =====================================================
-  // CHECK RESET PASSWORD URL
-  // =====================================================
-
   useEffect(() => {
-
-    const params = new URLSearchParams(
-      window.location.search
-    );
-
+    const params = new URLSearchParams(window.location.search);
     const token = params.get("token");
 
     if (token) {
-
       setResetToken(token);
-
       setMode("reset");
-
     }
-
   }, []);
 
-
-  // =====================================================
-  // SWITCH LOGIN / SIGNUP
-  // =====================================================
+  const clearForm = () => {
+    setName("");
+    setEmail("");
+    setPassword("");
+    setResetToken("");
+    setError("");
+    setSuccess("");
+    setResetLink("");
+    setShowPassword(false);
+  };
 
   const switchMode = () => {
+    setMode(mode === "login" ? "signup" : "login");
+    clearForm();
 
-    setMode(
-      mode === "login"
-        ? "signup"
-        : "login"
-    );
-
-    setError("");
-
-    setSuccess("");
-
-    setResetLink("");
-
-    setName("");
-
-    setEmail("");
-
-    setPassword("");
-
-    setResetToken("");
-
-    setShowPassword(false);
-
-    // Remove reset token from URL
     window.history.replaceState(
       {},
       document.title,
       window.location.pathname
     );
-
   };
-
-
-  // =====================================================
-  // GO LOGIN
-  // =====================================================
 
   const goToLogin = () => {
-
     setMode("login");
-
-    setError("");
-
-    setSuccess("");
-
-    setResetLink("");
-
-    setName("");
-
-    setEmail("");
-
-    setPassword("");
-
-    setResetToken("");
-
-    setShowPassword(false);
+    clearForm();
 
     window.history.replaceState(
       {},
       document.title,
       window.location.pathname
     );
-
   };
 
+  const getBackendError = (data, response) => {
+    if (!data) {
+      return `Backend returned status ${response.status}.`;
+    }
 
-  // =====================================================
-  // LOGIN / SIGNUP
-  // =====================================================
+    if (typeof data.detail === "string") {
+      return data.detail;
+    }
+
+    if (typeof data.message === "string") {
+      return data.message;
+    }
+
+    if (typeof data.error === "string") {
+      return data.error;
+    }
+
+    if (Array.isArray(data.detail)) {
+      return data.detail
+        .map((item) => {
+          if (typeof item === "string") {
+            return item;
+          }
+
+          return item?.msg || "Invalid input.";
+        })
+        .join(", ");
+    }
+
+    return `Request failed with status ${response.status}.`;
+  };
 
   const handleSubmit = async (e) => {
-
     e.preventDefault();
 
     setError("");
-
     setSuccess("");
 
-    // -------------------------------------------------
-    // NAME VALIDATION
-    // -------------------------------------------------
-
-    if (
-      mode === "signup" &&
-      !name.trim()
-    ) {
-
-      setError(
-        "Please enter your full name."
-      );
-
+    if (mode === "signup" && !name.trim()) {
+      setError("Please enter your full name.");
       return;
-
     }
-
-
-    // -------------------------------------------------
-    // EMAIL VALIDATION
-    // -------------------------------------------------
 
     if (!email.trim()) {
-
-      setError(
-        "Please enter your email."
-      );
-
+      setError("Please enter your email.");
       return;
-
     }
-
 
     if (!email.includes("@")) {
-
-      setError(
-        "Please enter a valid email address."
-      );
-
+      setError("Please enter a valid email address.");
       return;
-
     }
-
-
-    // -------------------------------------------------
-    // PASSWORD VALIDATION
-    // -------------------------------------------------
 
     if (!password.trim()) {
-
-      setError(
-        "Please enter your password."
-      );
-
+      setError("Please enter your password.");
       return;
-
     }
-
 
     if (password.length < 6) {
-
-      setError(
-        "Password must be at least 6 characters."
-      );
-
+      setError("Password must be at least 6 characters.");
       return;
-
     }
-
 
     setLoading(true);
 
-
     try {
-
       const endpoint =
         mode === "signup"
-          ? "http://127.0.0.1:8000/signup"
-          : "http://127.0.0.1:8000/login";
-
+          ? `${API_URL}/signup`
+          : `${API_URL}/login`;
 
       const requestBody =
         mode === "signup"
-
           ? {
-
               name: name.trim(),
-
-              email: email.trim(),
-
-              password
-
+              email: email.trim().toLowerCase(),
+              password: password
             }
-
           : {
-
-              email: email.trim(),
-
-              password
-
+              email: email.trim().toLowerCase(),
+              password: password
             };
 
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json"
+        },
+        body: JSON.stringify(requestBody)
+      });
 
-      console.log(
-        "CodeGuard Auth Request:",
-        endpoint
-      );
+      const responseText = await response.text();
 
+      let data = {};
 
-      const response = await fetch(
-        endpoint,
-        {
-
-          method: "POST",
-
-          headers: {
-
-            "Content-Type":
-              "application/json"
-
-          },
-
-          body: JSON.stringify(
-            requestBody
-          )
-
+      if (responseText) {
+        try {
+          data = JSON.parse(responseText);
+        } catch {
+          throw new Error(
+            `Backend returned an invalid response. HTTP ${response.status}`
+          );
         }
-      );
-
-
-      let data;
-
-
-      try {
-
-        data = await response.json();
-
-      } catch {
-
-        throw new Error(
-          "Backend returned an invalid response."
-        );
-
       }
-
 
       if (!response.ok) {
-
-        if (response.status === 422) {
-
-          throw new Error(
-            "Invalid data. Please check your information."
-          );
-
-        }
-
-        if (response.status === 404) {
-
-          throw new Error(
-            "Authentication API not found. Check backend."
-          );
-
-        }
-
-        if (response.status >= 500) {
-
-          throw new Error(
-            data.message ||
-            "Backend server error."
-          );
-
-        }
-
-        throw new Error(
-          data.message ||
-          "Authentication request failed."
-        );
-
+        throw new Error(getBackendError(data, response));
       }
 
-
-      if (!data.success) {
-
-        throw new Error(
-          data.message ||
-          "Authentication failed."
-        );
-
+      if (data.success === false) {
+        throw new Error(getBackendError(data, response));
       }
-
-
-      // -------------------------------------------------
-      // SIGNUP SUCCESS
-      // -------------------------------------------------
 
       if (mode === "signup") {
-
         setSuccess(
-          "Account created successfully! Please login."
+          data.message ||
+            "Account created successfully! Please login."
         );
 
         setMode("login");
-
         setName("");
-
         setPassword("");
 
         return;
-
       }
-
-
-      // -------------------------------------------------
-      // LOGIN SUCCESS
-      // -------------------------------------------------
 
       if (!data.token) {
-
         throw new Error(
-          "Login successful but token was not received."
+          "Login successful but token was not received from backend."
         );
-
       }
 
-
-      // Save JWT token
       localStorage.setItem(
         "codeguard_token",
         data.token
       );
 
-
       const loggedInUser = {
-
         id:
           data.user?.id ||
+          data.user?._id ||
           "",
 
         name:
@@ -402,479 +222,260 @@ function Auth({ onLogin }) {
 
         email:
           data.user?.email ||
-          email.trim(),
+          email.trim().toLowerCase(),
 
         role:
           data.user?.role ||
           "user"
-
       };
 
-
-      // Save user
       localStorage.setItem(
-
         "codeguard_user",
-
-        JSON.stringify(
-          loggedInUser
-        )
-
+        JSON.stringify(loggedInUser)
       );
 
-
-      console.log(
-        "Logged in user:",
-        loggedInUser
-      );
-
-
-      if (
-        typeof onLogin ===
-        "function"
-      ) {
-
-        onLogin(
-          loggedInUser
-        );
-
+      if (typeof onLogin === "function") {
+        onLogin(loggedInUser);
       } else {
-
         throw new Error(
           "Login successful but application could not open."
         );
-
       }
-
     } catch (error) {
-
       console.error(
         "CodeGuard Authentication Error:",
         error
       );
 
-
-      if (
-        error.name === "TypeError" &&
-        error.message.includes("fetch")
-      ) {
-
+      if (error instanceof TypeError) {
         setError(
-          "Cannot connect to backend. Make sure FastAPI is running on port 8000."
+          "Cannot connect to backend. Check Render backend or CORS."
         );
-
       } else {
-
         setError(
           error.message ||
-          "Something went wrong. Please try again."
+            "Something went wrong. Please try again."
         );
-
       }
-
     } finally {
-
       setLoading(false);
-
     }
-
   };
 
-
-  // =====================================================
-  // FORGOT PASSWORD
-  // =====================================================
-
   const handleForgotPassword = async (e) => {
-
     e.preventDefault();
 
     setError("");
-
     setSuccess("");
-
     setResetLink("");
 
-
-    // -------------------------------------------------
-    // EMAIL VALIDATION
-    // -------------------------------------------------
-
     if (!email.trim()) {
-
-      setError(
-        "Please enter your email address."
-      );
-
+      setError("Please enter your email address.");
       return;
-
     }
-
 
     if (!email.includes("@")) {
-
-      setError(
-        "Please enter a valid email address."
-      );
-
+      setError("Please enter a valid email address.");
       return;
-
     }
-
 
     setLoading(true);
 
-
     try {
-
       const response = await fetch(
-
-        "http://127.0.0.1:8000/forgot-password",
-
+        `${API_URL}/forgot-password`,
         {
-
           method: "POST",
-
           headers: {
-
-            "Content-Type":
-              "application/json"
-
+            "Content-Type": "application/json",
+            Accept: "application/json"
           },
-
           body: JSON.stringify({
-
-            email:
-              email.trim()
-
+            email: email.trim().toLowerCase()
           })
-
         }
-
       );
 
+      const responseText = await response.text();
 
-      let data;
+      let data = {};
 
-
-      try {
-
-        data = await response.json();
-
-      } catch {
-
-        throw new Error(
-          "Backend returned an invalid response."
-        );
-
+      if (responseText) {
+        try {
+          data = JSON.parse(responseText);
+        } catch {
+          throw new Error(
+            `Invalid backend response. HTTP ${response.status}`
+          );
+        }
       }
-
 
       if (!response.ok) {
-
         throw new Error(
-
-          data.message ||
-          "Unable to process password reset."
-
+          getBackendError(data, response)
         );
-
       }
 
-
-      if (!data.success) {
-
+      if (data.success === false) {
         throw new Error(
-
-          data.message ||
-          "Unable to process password reset."
-
+          getBackendError(data, response)
         );
-
       }
-
 
       setSuccess(
-
         data.message ||
-        "If this email is registered, a reset link will be generated."
-
+          "If this email is registered, a reset link will be generated."
       );
 
-
-      // -------------------------------------------------
-      // DEVELOPMENT RESET LINK
-      // -------------------------------------------------
-
       if (data.reset_link) {
-
-        setResetLink(
-          data.reset_link
-        );
-
+        setResetLink(data.reset_link);
       }
-
     } catch (error) {
-
       console.error(
         "Forgot Password Error:",
         error
       );
 
-
-      if (
-        error.name === "TypeError"
-      ) {
-
-        setError(
-          "Cannot connect to backend. Make sure FastAPI is running."
-        );
-
+      if (error instanceof TypeError) {
+        setError("Cannot connect to backend.");
       } else {
-
         setError(
-
           error.message ||
-          "Something went wrong."
-
+            "Something went wrong."
         );
-
       }
-
     } finally {
-
       setLoading(false);
-
     }
-
   };
 
-
-  // =====================================================
-  // RESET PASSWORD
-  // =====================================================
-
   const handleResetPassword = async (e) => {
-
     e.preventDefault();
 
     setError("");
-
     setSuccess("");
 
-
     if (!resetToken.trim()) {
-
-      setError(
-        "Reset token is missing."
-      );
-
+      setError("Reset token is missing.");
       return;
-
     }
-
 
     if (!password.trim()) {
-
-      setError(
-        "Please enter your new password."
-      );
-
+      setError("Please enter your new password.");
       return;
-
     }
-
 
     if (password.length < 6) {
-
-      setError(
-        "Password must be at least 6 characters."
-      );
-
+      setError("Password must be at least 6 characters.");
       return;
-
     }
-
 
     setLoading(true);
 
-
     try {
-
       const response = await fetch(
-
-        "http://127.0.0.1:8000/reset-password",
-
+        `${API_URL}/reset-password`,
         {
-
           method: "POST",
-
           headers: {
-
-            "Content-Type":
-              "application/json"
-
+            "Content-Type": "application/json",
+            Accept: "application/json"
           },
-
           body: JSON.stringify({
-
-            token:
-              resetToken,
-
-            new_password:
-              password
-
+            token: resetToken,
+            new_password: password
           })
-
         }
-
       );
 
+      const responseText = await response.text();
 
-      let data;
+      let data = {};
 
-
-      try {
-
-        data = await response.json();
-
-      } catch {
-
-        throw new Error(
-          "Backend returned an invalid response."
-        );
-
+      if (responseText) {
+        try {
+          data = JSON.parse(responseText);
+        } catch {
+          throw new Error(
+            `Invalid backend response. HTTP ${response.status}`
+          );
+        }
       }
-
 
       if (!response.ok) {
-
         throw new Error(
-
-          data.message ||
-          "Unable to reset password."
-
+          getBackendError(data, response)
         );
-
       }
 
-
-      if (!data.success) {
-
+      if (data.success === false) {
         throw new Error(
-
-          data.message ||
-          "Unable to reset password."
-
+          getBackendError(data, response)
         );
-
       }
-
 
       setSuccess(
-
-        "Password reset successfully! You can now login."
-
+        data.message ||
+          "Password reset successfully! You can now login."
       );
 
-
       setPassword("");
-
       setResetToken("");
 
       setTimeout(() => {
-
         setMode("login");
 
         window.history.replaceState(
-
           {},
-
           document.title,
-
           window.location.pathname
-
         );
-
       }, 1500);
-
     } catch (error) {
-
       console.error(
         "Reset Password Error:",
         error
       );
 
-
-      setError(
-
-        error.message ||
-        "Unable to reset password."
-
-      );
-
+      if (error instanceof TypeError) {
+        setError("Cannot connect to backend.");
+      } else {
+        setError(
+          error.message ||
+            "Unable to reset password."
+        );
+      }
     } finally {
-
       setLoading(false);
-
     }
-
   };
 
-
-  // =====================================================
-  // FORGOT PASSWORD SCREEN
-  // =====================================================
-
   if (mode === "forgot") {
-
     return (
-
       <div className="auth-page">
-
         <div className="auth-card">
 
           <div className="auth-logo">
-
             <div className="auth-logo-icon">
-
               <Code2 size={25} />
-
             </div>
 
-            <span>
-              CodeGuard
-            </span>
-
+            <span>CodeGuard</span>
           </div>
 
-
-          <h1>
-            Forgot password?
-          </h1>
-
+          <h1>Forgot password?</h1>
 
           <p className="auth-subtitle">
-
-            Enter your email and we'll
-            help you reset your password.
-
+            Enter your email and we'll help you reset your password.
           </p>
 
-
           {error && (
-
             <div className="auth-error">
-
               {error}
-
             </div>
-
           )}
 
-
           {success && (
-
             <div
               style={{
                 padding: "12px",
@@ -887,28 +488,16 @@ function Auth({ onLogin }) {
                 lineHeight: "1.5"
               }}
             >
-
               {success}
-
             </div>
-
           )}
 
-
-          <form
-            onSubmit={
-              handleForgotPassword
-            }
-          >
+          <form onSubmit={handleForgotPassword}>
 
             <div className="auth-field">
-
-              <label>
-                Email
-              </label>
+              <label>Email</label>
 
               <div className="auth-input-wrapper">
-
                 <Mail size={18} />
 
                 <input
@@ -916,43 +505,29 @@ function Auth({ onLogin }) {
                   placeholder="Enter your email"
                   value={email}
                   onChange={(e) => {
-
-                    setEmail(
-                      e.target.value
-                    );
-
+                    setEmail(e.target.value);
                     setError("");
-
                     setSuccess("");
-
                     setResetLink("");
-
                   }}
                   autoComplete="email"
                 />
-
               </div>
-
             </div>
-
 
             <button
               type="submit"
               className="auth-submit"
               disabled={loading}
             >
-
               {loading
                 ? "Generating reset link..."
                 : "Send Reset Link"}
-
             </button>
 
           </form>
 
-
           {resetLink && (
-
             <div
               style={{
                 marginTop: "15px",
@@ -964,7 +539,6 @@ function Auth({ onLogin }) {
                 lineHeight: "1.5"
               }}
             >
-
               <div
                 style={{
                   marginBottom: "8px",
@@ -973,7 +547,6 @@ function Auth({ onLogin }) {
               >
                 Development Reset Link
               </div>
-
 
               <a
                 href={resetLink}
@@ -984,11 +557,8 @@ function Auth({ onLogin }) {
               >
                 Open Reset Password
               </a>
-
             </div>
-
           )}
-
 
           <div
             className="auth-switch"
@@ -996,7 +566,6 @@ function Auth({ onLogin }) {
               marginTop: "20px"
             }}
           >
-
             <button
               type="button"
               onClick={goToLogin}
@@ -1006,15 +575,10 @@ function Auth({ onLogin }) {
                 gap: "5px"
               }}
             >
-
               <ArrowLeft size={14} />
-
               Back to Login
-
             </button>
-
           </div>
-
 
           <div
             style={{
@@ -1024,73 +588,40 @@ function Auth({ onLogin }) {
               opacity: 0.5
             }}
           >
-
             AI-powered code analysis & debugging
-
           </div>
 
         </div>
-
       </div>
-
     );
-
   }
 
-
-  // =====================================================
-  // RESET PASSWORD SCREEN
-  // =====================================================
-
   if (mode === "reset") {
-
     return (
-
       <div className="auth-page">
-
         <div className="auth-card">
 
           <div className="auth-logo">
-
             <div className="auth-logo-icon">
-
               <Code2 size={25} />
-
             </div>
 
-            <span>
-              CodeGuard
-            </span>
-
+            <span>CodeGuard</span>
           </div>
 
-
-          <h1>
-            Reset password
-          </h1>
-
+          <h1>Reset password</h1>
 
           <p className="auth-subtitle">
-
-            Create a new password for
-            your CodeGuard account.
-
+            Create a new password for your CodeGuard account.
           </p>
 
-
           {error && (
-
             <div className="auth-error">
-
               {error}
-
             </div>
-
           )}
 
-
           {success && (
-
             <div
               style={{
                 padding: "12px",
@@ -1103,28 +634,16 @@ function Auth({ onLogin }) {
                 lineHeight: "1.5"
               }}
             >
-
               {success}
-
             </div>
-
           )}
 
-
-          <form
-            onSubmit={
-              handleResetPassword
-            }
-          >
+          <form onSubmit={handleResetPassword}>
 
             <div className="auth-field">
-
-              <label>
-                New Password
-              </label>
+              <label>New Password</label>
 
               <div className="auth-input-wrapper">
-
                 <Lock size={18} />
 
                 <input
@@ -1136,25 +655,17 @@ function Auth({ onLogin }) {
                   placeholder="Enter new password"
                   value={password}
                   onChange={(e) => {
-
-                    setPassword(
-                      e.target.value
-                    );
-
+                    setPassword(e.target.value);
                     setError("");
-
                   }}
                   autoComplete="new-password"
                 />
-
 
                 <button
                   type="button"
                   className="password-toggle"
                   onClick={() =>
-                    setShowPassword(
-                      !showPassword
-                    )
+                    setShowPassword(!showPassword)
                   }
                   aria-label={
                     showPassword
@@ -1162,36 +673,27 @@ function Auth({ onLogin }) {
                       : "Show password"
                   }
                 >
-
                   {showPassword
                     ? <EyeOff size={18} />
                     : <Eye size={18} />
                   }
-
                 </button>
-
               </div>
-
             </div>
-
 
             <button
               type="submit"
               className="auth-submit"
               disabled={loading}
             >
-
               {loading
                 ? "Resetting password..."
                 : "Reset Password"}
-
             </button>
 
           </form>
 
-
           <div className="auth-switch">
-
             <button
               type="button"
               onClick={goToLogin}
@@ -1201,15 +703,10 @@ function Auth({ onLogin }) {
                 gap: "5px"
               }}
             >
-
               <ArrowLeft size={14} />
-
               Back to Login
-
             </button>
-
           </div>
-
 
           <div
             style={{
@@ -1219,86 +716,47 @@ function Auth({ onLogin }) {
               opacity: 0.5
             }}
           >
-
             AI-powered code analysis & debugging
-
           </div>
 
         </div>
-
       </div>
-
     );
-
   }
 
-
-  // =====================================================
-  // NORMAL LOGIN / SIGNUP SCREEN
-  // =====================================================
-
   return (
-
     <div className="auth-page">
-
       <div className="auth-card">
-
-        {/* LOGO */}
 
         <div className="auth-logo">
 
           <div className="auth-logo-icon">
-
             <Code2 size={25} />
-
           </div>
 
-          <span>
-            CodeGuard
-          </span>
+          <span>CodeGuard</span>
 
         </div>
 
-
-        {/* TITLE */}
-
         <h1>
-
           {mode === "login"
             ? "Welcome back"
             : "Create your account"}
-
         </h1>
 
-
         <p className="auth-subtitle">
-
           {mode === "login"
-
             ? "Login to continue to CodeGuard"
-
             : "Create your CodeGuard account"}
-
         </p>
 
-
-        {/* ERROR */}
-
         {error && (
-
           <div className="auth-error">
-
             {error}
-
           </div>
-
         )}
 
-
-        {/* SUCCESS */}
-
         {success && (
-
           <div
             style={{
               padding: "12px",
@@ -1311,29 +769,16 @@ function Auth({ onLogin }) {
               lineHeight: "1.5"
             }}
           >
-
             {success}
-
           </div>
-
         )}
 
-
-        {/* FORM */}
-
-        <form
-          onSubmit={handleSubmit}
-        >
-
-          {/* NAME */}
+        <form onSubmit={handleSubmit}>
 
           {mode === "signup" && (
-
             <div className="auth-field">
 
-              <label>
-                Full Name
-              </label>
+              <label>Full Name</label>
 
               <div className="auth-input-wrapper">
 
@@ -1344,13 +789,8 @@ function Auth({ onLogin }) {
                   placeholder="Enter your full name"
                   value={name}
                   onChange={(e) => {
-
-                    setName(
-                      e.target.value
-                    );
-
+                    setName(e.target.value);
                     setError("");
-
                   }}
                   autoComplete="name"
                 />
@@ -1358,17 +798,11 @@ function Auth({ onLogin }) {
               </div>
 
             </div>
-
           )}
-
-
-          {/* EMAIL */}
 
           <div className="auth-field">
 
-            <label>
-              Email
-            </label>
+            <label>Email</label>
 
             <div className="auth-input-wrapper">
 
@@ -1379,13 +813,8 @@ function Auth({ onLogin }) {
                 placeholder="Enter your email"
                 value={email}
                 onChange={(e) => {
-
-                  setEmail(
-                    e.target.value
-                  );
-
+                  setEmail(e.target.value);
                   setError("");
-
                 }}
                 autoComplete="email"
               />
@@ -1394,14 +823,9 @@ function Auth({ onLogin }) {
 
           </div>
 
-
-          {/* PASSWORD */}
-
           <div className="auth-field">
 
-            <label>
-              Password
-            </label>
+            <label>Password</label>
 
             <div className="auth-input-wrapper">
 
@@ -1416,13 +840,8 @@ function Auth({ onLogin }) {
                 placeholder="Enter your password"
                 value={password}
                 onChange={(e) => {
-
-                  setPassword(
-                    e.target.value
-                  );
-
+                  setPassword(e.target.value);
                   setError("");
-
                 }}
                 autoComplete={
                   mode === "signup"
@@ -1431,14 +850,11 @@ function Auth({ onLogin }) {
                 }
               />
 
-
               <button
                 type="button"
                 className="password-toggle"
                 onClick={() =>
-                  setShowPassword(
-                    !showPassword
-                  )
+                  setShowPassword(!showPassword)
                 }
                 aria-label={
                   showPassword
@@ -1446,23 +862,17 @@ function Auth({ onLogin }) {
                     : "Show password"
                 }
               >
-
                 {showPassword
                   ? <EyeOff size={18} />
                   : <Eye size={18} />
                 }
-
               </button>
 
             </div>
 
           </div>
 
-
-          {/* FORGOT PASSWORD */}
-
           {mode === "login" && (
-
             <div
               style={{
                 textAlign: "right",
@@ -1470,21 +880,14 @@ function Auth({ onLogin }) {
                 marginBottom: "15px"
               }}
             >
-
               <button
                 type="button"
                 onClick={() => {
-
                   setMode("forgot");
-
                   setError("");
-
                   setSuccess("");
-
                   setPassword("");
-
                   setResetLink("");
-
                 }}
                 style={{
                   background: "none",
@@ -1495,65 +898,41 @@ function Auth({ onLogin }) {
                   fontSize: "13px"
                 }}
               >
-
                 Forgot password?
-
               </button>
-
             </div>
-
           )}
-
-
-          {/* SUBMIT */}
 
           <button
             type="submit"
             className="auth-submit"
             disabled={loading}
           >
-
             {loading
-
               ? "Please wait..."
-
               : mode === "login"
-
                 ? "Login"
-
                 : "Create Account"}
-
           </button>
 
         </form>
 
-
-        {/* LOGIN / SIGNUP SWITCH */}
-
         <div className="auth-switch">
 
           {mode === "login"
-
             ? "Don't have an account?"
-
             : "Already have an account?"}
-
 
           <button
             type="button"
             onClick={switchMode}
           >
-
             {mode === "login"
               ? " Sign up"
               : " Login"}
-
           </button>
 
         </div>
-
-
-        {/* FOOTER */}
 
         <div
           style={{
@@ -1563,18 +942,12 @@ function Auth({ onLogin }) {
             opacity: 0.5
           }}
         >
-
           AI-powered code analysis & debugging
-
         </div>
 
       </div>
-
     </div>
-
   );
-
 }
-
 
 export default Auth;
