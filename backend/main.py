@@ -27,19 +27,7 @@ app = Flask(__name__)
 # CORS
 # =========================================================
 
-CORS(
-    app,
-    origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-
-        # Main Vercel domain
-        "https://codeguard-woad.vercel.app",
-
-        # Vercel Git deployment domains
-        "https://codeguard-git-main-code-de01.vercel.app",
-        "https://codeguard-iqlkg12sp-code-de01.vercel.app"
-    ],
+CORS(app)
     methods=[
         "GET",
         "POST",
