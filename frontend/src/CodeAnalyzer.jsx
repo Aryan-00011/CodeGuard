@@ -15,9 +15,9 @@ import {
 
 import "./CodeAnalyzer.css";
 
+const API_URL = import.meta.env.VITE_API_URL;
 
 function CodeAnalyzer() {
-
   const [code, setCode] = useState(
 `def calculate_average(numbers):
 
@@ -32,168 +32,159 @@ function CodeAnalyzer() {
 `
   );
 
-
   const [activeTab, setActiveTab] = useState("Summary");
-
-
   const [analyzed, setAnalyzed] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
+  const [analysis, setAnalysis] = useState({
+    health: 0,
+    bugs: 0,
+    security: 0,
+    time_complexity: "Unknown",
+    space_complexity: "Unknown",
+    bug_details: [],
+    security_details: [],
+    suggestions: []
+  });
 
-  const runAnalysis = () => {
+  const runAnalysis = async () => {
+    if (!code.trim()) {
+      setError("Please enter some code first.");
+      return;
+    }
 
-    setAnalyzed(true);
+    setLoading(true);
+    setError("");
+    setAnalyzed(false);
 
-    setActiveTab("Summary");
+    try {
+      const response = await fetch(`${API_URL}/analyze-code`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json"
+        },
+        body: JSON.stringify({
+          code: code,
+          language: "python"
+        })
+      });
 
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.message || "Code analysis failed"
+        );
+      }
+
+      setAnalysis({
+        health: data.health ?? 0,
+        bugs: data.bugs ?? 0,
+        security: data.security ?? 0,
+        time_complexity: data.time_complexity ?? "Unknown",
+        space_complexity: data.space_complexity ?? "Unknown",
+        bug_details: data.bug_details ?? [],
+        security_details: data.security_details ?? [],
+        suggestions: data.suggestions ?? []
+      });
+
+      setAnalyzed(true);
+      setActiveTab("Summary");
+
+    } catch (error) {
+      console.error("Code Analysis Error:", error);
+
+      setError(
+        "Unable to connect to CodeGuard backend."
+      );
+
+    } finally {
+      setLoading(false);
+    }
   };
 
-
   return (
-
     <div className="analyzer-workspace">
 
-
-      {/* ================= FILE EXPLORER ================= */}
+      {/* FILE EXPLORER */}
 
       <aside className="file-panel">
 
         <div className="file-header">
-
-          <span>
-            EXPLORER
-          </span>
-
-          <span className="file-count">
-            3
-          </span>
-
+          <span>EXPLORER</span>
+          <span className="file-count">3</span>
         </div>
-
 
         <div className="project-name">
-
           <ChevronDown size={14} />
-
           <Folder size={15} />
-
-          <span>
-            codeguard-project
-          </span>
-
+          <span>codeguard-project</span>
         </div>
-
 
         <div className="file-list">
 
-
           <div className="file-item active">
-
             <FileCode2 size={15} />
-
-            <span>
-              main.py
-            </span>
-
+            <span>main.py</span>
           </div>
-
 
           <div className="file-item">
-
             <FileCode2 size={15} />
-
-            <span>
-              utils.py
-            </span>
-
+            <span>utils.py</span>
           </div>
-
 
           <div className="file-item">
-
             <FileCode2 size={15} />
-
-            <span>
-              requirements.txt
-            </span>
-
+            <span>requirements.txt</span>
           </div>
-
 
         </div>
 
-
         <div className="file-bottom">
-
-          <span>
-            PYTHON PROJECT
-          </span>
-
-          <span>
-            3 FILES
-          </span>
-
+          <span>PYTHON PROJECT</span>
+          <span>3 FILES</span>
         </div>
 
       </aside>
 
 
-
-      {/* ================= CODE EDITOR ================= */}
+      {/* CODE EDITOR */}
 
       <section className="editor-section">
 
-
         <div className="editor-header">
 
-
           <div className="editor-file">
-
             <FileCode2 size={15} />
-
-            <span>
-              main.py
-            </span>
-
-            <span className="modified">
-              ●
-            </span>
-
+            <span>main.py</span>
+            <span className="modified">●</span>
           </div>
-
 
           <button
             className="run-button"
             onClick={runAnalysis}
+            disabled={loading}
           >
 
             <Play size={14} />
 
-            Analyze Code
+            {loading ? "Analyzing..." : "Analyze Code"}
 
           </button>
 
-
         </div>
-
 
         <div className="monaco-container">
 
           <Editor
-
             height="100%"
-
             defaultLanguage="python"
-
             value={code}
-
-            onChange={(value) =>
-              setCode(value || "")
-            }
-
+            onChange={(value) => setCode(value || "")}
             theme="vs-dark"
-
             options={{
-
               minimap: {
                 enabled: false
               },
@@ -213,74 +204,49 @@ function CodeAnalyzer() {
               cursorBlinking: "smooth",
 
               lineNumbers: "on"
-
             }}
-
           />
 
         </div>
 
-
         <div className="editor-status">
-
-          <span>
-            Python
-          </span>
-
-          <span>
-            UTF-8
-          </span>
-
-          <span>
-            LF
-          </span>
+          <span>Python</span>
+          <span>UTF-8</span>
+          <span>LF</span>
 
           <span className="status-ready">
-            ● Ready
+            ● {loading ? "Analyzing..." : "Ready"}
           </span>
-
         </div>
 
       </section>
 
 
-
-      {/* ================= ANALYSIS PANEL ================= */}
+      {/* ANALYSIS PANEL */}
 
       <aside className="analysis-panel">
-
 
         <div className="analysis-header">
 
           <div>
-
-            <strong>
-              Code Analysis
-            </strong>
+            <strong>Code Analysis</strong>
 
             <span>
               AI-powered inspection
             </span>
-
           </div>
 
-
           <div className="analysis-status">
-
             <span></span>
-
-            READY
-
+            {loading ? "ANALYZING" : "READY"}
           </div>
 
         </div>
 
 
-
         {/* TABS */}
 
         <div className="analysis-tabs">
-
 
           <button
             className={
@@ -288,14 +254,10 @@ function CodeAnalyzer() {
                 ? "tab active"
                 : "tab"
             }
-
-            onClick={() =>
-              setActiveTab("Summary")
-            }
+            onClick={() => setActiveTab("Summary")}
           >
             Summary
           </button>
-
 
           <button
             className={
@@ -303,14 +265,10 @@ function CodeAnalyzer() {
                 ? "tab active"
                 : "tab"
             }
-
-            onClick={() =>
-              setActiveTab("Bugs")
-            }
+            onClick={() => setActiveTab("Bugs")}
           >
             Bugs
           </button>
-
 
           <button
             className={
@@ -318,14 +276,10 @@ function CodeAnalyzer() {
                 ? "tab active"
                 : "tab"
             }
-
-            onClick={() =>
-              setActiveTab("Complexity")
-            }
+            onClick={() => setActiveTab("Complexity")}
           >
             Complexity
           </button>
-
 
           <button
             className={
@@ -333,14 +287,10 @@ function CodeAnalyzer() {
                 ? "tab active"
                 : "tab"
             }
-
-            onClick={() =>
-              setActiveTab("Security")
-            }
+            onClick={() => setActiveTab("Security")}
           >
             Security
           </button>
-
 
           <button
             className={
@@ -348,32 +298,45 @@ function CodeAnalyzer() {
                 ? "tab active"
                 : "tab"
             }
-
-            onClick={() =>
-              setActiveTab("Suggestions")
-            }
+            onClick={() => setActiveTab("Suggestions")}
           >
             Suggestions
           </button>
 
-
         </div>
 
 
-
-        {/* ================= TAB CONTENT ================= */}
-
         <div className="analysis-content">
 
+          {error && (
+            <div className="analysis-empty">
 
-          {!analyzed && (
+              <div className="empty-icon">
+                <Bug size={20} />
+              </div>
+
+              <strong>
+                Analysis failed
+              </strong>
+
+              <p>
+                {error}
+              </p>
+
+              <button onClick={runAnalysis}>
+                Try Again
+              </button>
+
+            </div>
+          )}
+
+
+          {!analyzed && !error && (
 
             <div className="analysis-empty">
 
               <div className="empty-icon">
-
                 <Zap size={20} />
-
               </div>
 
               <strong>
@@ -385,39 +348,32 @@ function CodeAnalyzer() {
                 bugs, complexity and security issues.
               </p>
 
-              <button
-                onClick={runAnalysis}
-              >
+              <button onClick={runAnalysis}>
                 Analyze Code
               </button>
 
             </div>
-
           )}
 
 
+          {/* SUMMARY */}
 
           {analyzed && activeTab === "Summary" && (
 
             <div className="summary-content">
 
-
               <div className="health-card">
 
                 <div>
-
-                  <span>
-                    CODE HEALTH
-                  </span>
+                  <span>CODE HEALTH</span>
 
                   <strong>
-                    92
+                    {analysis.health}
                   </strong>
-
                 </div>
 
                 <div className="health-circle">
-                  92%
+                  {analysis.health}%
                 </div>
 
               </div>
@@ -425,51 +381,37 @@ function CodeAnalyzer() {
 
               <div className="issue-grid">
 
-
                 <div className="issue-card">
-
                   <Bug size={17} />
 
                   <strong>
-                    0
+                    {analysis.bugs}
                   </strong>
 
-                  <span>
-                    Bugs
-                  </span>
-
+                  <span>Bugs</span>
                 </div>
 
 
                 <div className="issue-card">
-
                   <ShieldCheck size={17} />
 
                   <strong>
-                    0
+                    {analysis.security}
                   </strong>
 
-                  <span>
-                    Security
-                  </span>
-
+                  <span>Security</span>
                 </div>
 
 
                 <div className="issue-card">
-
                   <Zap size={17} />
 
                   <strong>
-                    O(n)
+                    {analysis.time_complexity}
                   </strong>
 
-                  <span>
-                    Complexity
-                  </span>
-
+                  <span>Complexity</span>
                 </div>
-
 
               </div>
 
@@ -481,74 +423,92 @@ function CodeAnalyzer() {
                 <div>
 
                   <strong>
-                    No critical issues found
+                    {analysis.bugs === 0
+                      ? "No critical issues found"
+                      : `${analysis.bugs} issue(s) found`}
                   </strong>
 
                   <span>
-                    Your code looks clean.
+                    CodeGuard analysis completed successfully.
                   </span>
 
                 </div>
 
               </div>
 
-
             </div>
-
           )}
 
 
+          {/* BUGS */}
 
           {analyzed && activeTab === "Bugs" && (
 
             <div className="result-section">
 
               <div className="result-title">
-
                 <Bug size={18} />
-
                 Bug Detection
-
               </div>
 
+              {analysis.bug_details.length === 0 ? (
 
-              <div className="result-good">
+                <div className="result-good">
 
-                <CheckCircle2 size={18} />
+                  <CheckCircle2 size={18} />
 
-                <div>
+                  <div>
 
-                  <strong>
-                    No bugs detected
-                  </strong>
+                    <strong>
+                      No bugs detected
+                    </strong>
 
-                  <span>
-                    Static analysis found no obvious
-                    issues in this code.
-                  </span>
+                    <span>
+                      Static analysis found no obvious
+                      issues in this code.
+                    </span>
+
+                  </div>
 
                 </div>
 
-              </div>
+              ) : (
+
+                analysis.bug_details.map(
+                  (bug, index) => (
+
+                    <div
+                      className="suggestion"
+                      key={index}
+                    >
+                      <strong>
+                        {bug.title}
+                      </strong>
+
+                      <span>
+                        {bug.description}
+                      </span>
+                    </div>
+
+                  )
+                )
+
+              )}
 
             </div>
-
           )}
 
 
+          {/* COMPLEXITY */}
 
           {analyzed && activeTab === "Complexity" && (
 
             <div className="result-section">
 
               <div className="result-title">
-
                 <Zap size={18} />
-
                 Complexity Analysis
-
               </div>
-
 
               <div className="complexity-box">
 
@@ -557,11 +517,10 @@ function CodeAnalyzer() {
                 </span>
 
                 <strong>
-                  O(n)
+                  {analysis.time_complexity}
                 </strong>
 
               </div>
-
 
               <div className="complexity-box">
 
@@ -570,16 +529,16 @@ function CodeAnalyzer() {
                 </span>
 
                 <strong>
-                  O(1)
+                  {analysis.space_complexity}
                 </strong>
 
               </div>
 
             </div>
-
           )}
 
 
+          {/* SECURITY */}
 
           {analyzed && activeTab === "Security" && (
 
@@ -593,31 +552,57 @@ function CodeAnalyzer() {
 
               </div>
 
+              {analysis.security_details.length === 0 ? (
 
-              <div className="result-good">
+                <div className="result-good">
 
-                <CheckCircle2 size={18} />
+                  <CheckCircle2 size={18} />
 
-                <div>
+                  <div>
 
-                  <strong>
-                    No security issues detected
-                  </strong>
+                    <strong>
+                      No security issues detected
+                    </strong>
 
-                  <span>
-                    No obvious vulnerable patterns
-                    were found.
-                  </span>
+                    <span>
+                      No obvious vulnerable patterns
+                      were found.
+                    </span>
+
+                  </div>
 
                 </div>
 
-              </div>
+              ) : (
+
+                analysis.security_details.map(
+                  (issue, index) => (
+
+                    <div
+                      className="suggestion"
+                      key={index}
+                    >
+
+                      <strong>
+                        {issue.title}
+                      </strong>
+
+                      <span>
+                        {issue.description}
+                      </span>
+
+                    </div>
+
+                  )
+                )
+
+              )}
 
             </div>
-
           )}
 
 
+          {/* SUGGESTIONS */}
 
           {analyzed && activeTab === "Suggestions" && (
 
@@ -631,50 +616,36 @@ function CodeAnalyzer() {
 
               </div>
 
+              {analysis.suggestions.map(
+                (suggestion, index) => (
 
-              <div className="suggestion">
+                  <div
+                    className="suggestion"
+                    key={index}
+                  >
 
-                <strong>
-                  Improve variable naming
-                </strong>
+                    <strong>
+                      {suggestion.title}
+                    </strong>
 
-                <span>
-                  Use descriptive names for better
-                  readability.
-                </span>
+                    <span>
+                      {suggestion.description}
+                    </span>
 
-              </div>
+                  </div>
 
-
-              <div className="suggestion">
-
-                <strong>
-                  Add input validation
-                </strong>
-
-                <span>
-                  Handle empty lists before calculating
-                  the average.
-                </span>
-
-              </div>
+                )
+              )}
 
             </div>
-
           )}
-
 
         </div>
 
-
       </aside>
 
-
     </div>
-
   );
-
 }
-
 
 export default CodeAnalyzer;
