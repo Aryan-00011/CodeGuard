@@ -27,7 +27,19 @@ app = Flask(__name__)
 # CORS
 # =========================================================
 
-CORS(app)
+CORS(
+    app,
+    origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+
+        # Main Vercel domain
+        "https://codeguard-woad.vercel.app",
+
+        # Vercel deployment domains
+        "https://codeguard-git-main-code-de01.vercel.app",
+        "https://codeguard-iqlkg12sp-code-de01.vercel.app"
+    ],
     methods=[
         "GET",
         "POST",
@@ -474,10 +486,6 @@ def extract_complexity_from_ai(ai_text):
     time_complexity = None
     space_complexity = None
 
-    # -----------------------------------------------------
-    # Time Complexity
-    # -----------------------------------------------------
-
     time_patterns = [
         r"time complexity\s*:\s*([^\n\r]+)",
         r"time\s*complexity\s*:\s*([^\n\r]+)",
@@ -502,10 +510,6 @@ def extract_complexity_from_ai(ai_text):
             if "O(" in value or "o(" in value:
                 time_complexity = value
                 break
-
-    # -----------------------------------------------------
-    # Space Complexity
-    # -----------------------------------------------------
 
     space_patterns = [
         r"space complexity\s*:\s*([^\n\r]+)",
@@ -535,7 +539,7 @@ def extract_complexity_from_ai(ai_text):
 
 
 # =========================================================
-# BASIC COMPLEXITY FOR NORMAL SOURCE CODE
+# BASIC COMPLEXITY
 # =========================================================
 
 def estimate_basic_complexity(code):
@@ -561,25 +565,13 @@ def estimate_basic_complexity(code):
 
     loop_count = len(loop_lines)
 
-    # -----------------------------------------------
-    # No loop
-    # -----------------------------------------------
-
     if loop_count == 0:
 
         time_complexity = "O(1)"
 
-    # -----------------------------------------------
-    # One loop
-    # -----------------------------------------------
-
     elif loop_count == 1:
 
         time_complexity = "O(n)"
-
-    # -----------------------------------------------
-    # Multiple loops
-    # -----------------------------------------------
 
     else:
 
@@ -596,10 +588,6 @@ def estimate_basic_complexity(code):
 def analyze_code():
 
     try:
-
-        # =================================================
-        # GET REQUEST DATA
-        # =================================================
 
         data = request.get_json()
 
@@ -625,10 +613,6 @@ def analyze_code():
             "full"
         )
 
-        # =================================================
-        # VALIDATE
-        # =================================================
-
         if not code:
 
             return jsonify({
@@ -643,20 +627,12 @@ def analyze_code():
         print("Action:", action)
         print("========================================")
 
-        # =================================================
-        # DETECT DSA
-        # =================================================
-
         dsa_mode = is_dsa_problem(code)
 
         print(
             "Mode:",
             "DSA / LEETCODE" if dsa_mode else "CODE REVIEW"
         )
-
-        # =================================================
-        # BASIC INFORMATION
-        # =================================================
 
         lines = code.splitlines()
 
@@ -685,8 +661,6 @@ def analyze_code():
                 "line": None
             })
 
-        # Python print
-
         if (
             "print(" in code
             and language.lower() in ["python", "py"]
@@ -697,8 +671,6 @@ def analyze_code():
                 "message": "Debug print statement detected.",
                 "line": None
             })
-
-        # JavaScript console
 
         if (
             "console.log" in code
@@ -733,7 +705,6 @@ def analyze_code():
         else:
 
             time_complexity = estimate_basic_complexity(code)
-
             space_complexity = "O(1)"
 
             complexity_reason = (
@@ -753,32 +724,26 @@ def analyze_code():
         security_issues = []
 
         dangerous_patterns = [
-
             (
                 "eval(",
                 "Use of eval() can execute arbitrary code."
             ),
-
             (
                 "exec(",
                 "Use of exec() can execute arbitrary code."
             ),
-
             (
                 "password =",
                 "Avoid storing passwords directly in source code."
             ),
-
             (
                 "api_key =",
                 "API keys should not be hardcoded."
             ),
-
             (
                 "secret =",
                 "Secrets should not be hardcoded."
             )
-
         ]
 
         for pattern, message in dangerous_patterns:
@@ -786,13 +751,9 @@ def analyze_code():
             if pattern.lower() in code.lower():
 
                 security_issues.append({
-
                     "type": "Security Warning",
-
                     "message": message,
-
                     "pattern": pattern
-
                 })
 
         # =================================================
@@ -815,38 +776,27 @@ def analyze_code():
                 "and readability."
             )
 
-        if not refactoring_suggestions:
-
-            refactoring_suggestions = []
-
         # =================================================
         # TEST CASES
         # =================================================
 
         test_cases = [
-
             {
                 "name": "Normal Input",
-
                 "description":
                     "Test the program with a normal valid input."
             },
-
             {
                 "name": "Edge Case",
-
                 "description":
                     "Test empty, minimum, maximum "
                     "or boundary input."
             },
-
             {
                 "name": "Invalid Input",
-
                 "description":
                     "Test how the program handles invalid input."
             }
-
         ]
 
         # =================================================
@@ -854,14 +804,10 @@ def analyze_code():
         # =================================================
 
         syntax_result = {
-
             "valid": True,
-
             "error": None,
-
             "message":
                 "Basic syntax analysis completed."
-
         }
 
         # =================================================
@@ -869,57 +815,31 @@ def analyze_code():
         # =================================================
 
         analysis = {
-
             "language": language,
-
             "action": action,
-
             "mode":
                 "LeetCode" if dsa_mode
                 else "Code Review",
-
             "lines_of_code": total_lines,
-
             "syntax": syntax_result,
-
             "bugs": bugs,
-
             "complexity": {
-
                 "time": time_complexity,
-
                 "space": space_complexity,
-
                 "reason": complexity_reason,
-
                 "space_reason": space_reason
-
             },
-
             "security": security_issues,
-
             "refactoring": {
-
-                "suggestions":
-                    refactoring_suggestions,
-
-                "refactored_code":
-                    None
-
+                "suggestions": refactoring_suggestions,
+                "refactored_code": None
             },
-
             "test_cases": {
-
-                "test_cases":
-                    test_cases,
-
+                "test_cases": test_cases,
                 "message":
                     "Basic test cases generated successfully."
-
             },
-
             "test_execution": None
-
         }
 
         # =================================================
@@ -933,13 +853,9 @@ def analyze_code():
         try:
 
             ai_review = review_code_with_ai(
-
                 code,
-
                 language,
-
                 analysis
-
             )
 
             print("\n========================================")
@@ -955,10 +871,6 @@ def analyze_code():
                 "AI Model:",
                 ai_review.get("model", "N/A")
             )
-
-            # =================================================
-            # SYNC AI COMPLEXITY WITH STATIC ANALYSIS
-            # =================================================
 
             ai_text = ai_review.get(
                 "review",
@@ -1000,21 +912,14 @@ def analyze_code():
             print("========================================")
 
             ai_review = {
-
                 "success": False,
-
                 "ai_enabled": False,
-
                 "language": language,
-
                 "review": "",
-
                 "message":
                     "AI review failed.",
-
                 "error":
                     str(ai_error)
-
             }
 
             if dsa_mode:
@@ -1027,18 +932,13 @@ def analyze_code():
         # =================================================
 
         return jsonify({
-
             "success": True,
-
             "message":
                 "Code analyzed successfully",
-
             "analysis":
                 analysis,
-
             "ai_review":
                 ai_review
-
         }), 200
 
     except Exception as error:
@@ -1052,15 +952,11 @@ def analyze_code():
         print("========================================\n")
 
         return jsonify({
-
             "success": False,
-
             "message":
                 "Code analysis failed",
-
             "error":
                 str(error)
-
         }), 500
 
 
@@ -1072,15 +968,11 @@ def analyze_code():
 def not_found(error):
 
     return jsonify({
-
         "success": False,
-
         "message":
             "API endpoint not found",
-
         "path":
             request.path
-
     }), 404
 
 
