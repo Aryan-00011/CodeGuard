@@ -12,7 +12,7 @@ import {
 
 import "./App.css";
 
-const API_URL = import.meta.env.VITE_API_URL;
+const API_URL = "https://codeguard-6kwp.onrender.com";
 
 function Auth({ onLogin }) {
   const [mode, setMode] = useState("login");
@@ -142,6 +142,7 @@ function Auth({ onLogin }) {
         mode === "signup"
           ? `${API_URL}/signup`
           : `${API_URL}/login`;
+    console.log("BACKEND URL:", endpoint);
 
       const requestBody =
         mode === "signup"

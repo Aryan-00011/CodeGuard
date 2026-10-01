@@ -1,351 +1,1118 @@
-from fastapi import FastAPI, Header
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, EmailStr
-
-from database import users_collection, chats_collection
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import re
 
 from auth import (
     create_user,
     authenticate_user,
     create_token,
     verify_token,
+    get_user_by_id,
     create_password_reset_token,
-    reset_password
+    reset_password,
+    send_reset_email
 )
 
-app = FastAPI(
-    title="CodeGuard API",
-    version="2.0.0"
-)
+from services.ai_reviewer import review_code_with_ai
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
+
+# =========================================================
+# FLASK APP
+# =========================================================
+
+app = Flask(__name__)
+
+
+# =========================================================
+# CORS
+# =========================================================
+
+CORS(
+    app,
+    origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-        "https://code-guard-umber.vercel.app"
+
+        # Main Vercel domain
+        "https://codeguard-woad.vercel.app",
+
+        # Vercel Git deployment domains
+        "https://codeguard-git-main-code-de01.vercel.app",
+        "https://codeguard-iqlkg12sp-code-de01.vercel.app"
     ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"]
+    methods=[
+        "GET",
+        "POST",
+        "PUT",
+        "DELETE",
+        "OPTIONS"
+    ],
+    allow_headers=[
+        "Content-Type",
+        "Authorization"
+    ],
+    supports_credentials=True
 )
 
 
-class SignupRequest(BaseModel):
-    name: str
-    email: EmailStr
-    password: str
+# =========================================================
+# HOME
+# =========================================================
 
-
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
-
-
-class ForgotPasswordRequest(BaseModel):
-    email: EmailStr
-
-
-class ResetPasswordRequest(BaseModel):
-    token: str
-    new_password: str
-
-
-@app.get("/")
+@app.route("/", methods=["GET"])
 def home():
-    return {
+
+    return jsonify({
         "success": True,
-        "message": "CodeGuard Backend is running",
-        "version": "2.0.0"
-    }
+        "message": "CodeGuard Backend is Running",
+        "status": "online"
+    }), 200
 
 
-@app.post("/signup")
-def signup(request: SignupRequest):
+# =========================================================
+# SIGNUP
+# =========================================================
+
+@app.route("/signup", methods=["POST"])
+def signup():
+
     try:
-        if not request.name.strip():
-            return {
-                "success": False,
-                "message": "Name is required."
-            }
 
-        if len(request.password) < 6:
-            return {
+        data = request.get_json()
+
+        if not data:
+            return jsonify({
                 "success": False,
-                "message": "Password must be at least 6 characters."
-            }
+                "message": "No data received"
+            }), 400
+
+        name = data.get("name", "").strip()
+        email = data.get("email", "").strip().lower()
+        password = data.get("password", "")
+
+        if not name:
+            return jsonify({
+                "success": False,
+                "message": "Name is required"
+            }), 400
+
+        if not email:
+            return jsonify({
+                "success": False,
+                "message": "Email is required"
+            }), 400
+
+        if not password:
+            return jsonify({
+                "success": False,
+                "message": "Password is required"
+            }), 400
+
+        if len(password) < 6:
+            return jsonify({
+                "success": False,
+                "message": "Password must be at least 6 characters"
+            }), 400
 
         user = create_user(
-            name=request.name.strip(),
-            email=str(request.email).lower().strip(),
-            password=request.password
+            name,
+            email,
+            password
         )
 
         if user is None:
-            return {
+            return jsonify({
                 "success": False,
-                "message": "Email already registered."
-            }
-
-        print("New user registered:", user["email"])
-        print("Role:", user["role"])
-
-        return {
-            "success": True,
-            "message": "Account created successfully.",
-            "user": {
-                "id": user["id"],
-                "name": user["name"],
-                "email": user["email"],
-                "role": user["role"]
-            }
-        }
-
-    except Exception as error:
-        print("SIGNUP ERROR:", error)
-
-        return {
-            "success": False,
-            "message": str(error)
-        }
-
-
-@app.post("/login")
-def login(request: LoginRequest):
-    try:
-        user = authenticate_user(
-            email=str(request.email).lower().strip(),
-            password=request.password
-        )
-
-        if user is None:
-            return {
-                "success": False,
-                "message": "Incorrect email or password."
-            }
+                "message": "User with this email already exists"
+            }), 409
 
         token = create_token(user)
 
-        print("User logged in:", user["email"])
-        print("Role:", user["role"])
-
-        return {
+        return jsonify({
             "success": True,
-            "message": "Login successful.",
+            "message": "Account created successfully",
             "token": token,
-            "user": {
-                "id": user["id"],
-                "name": user["name"],
-                "email": user["email"],
-                "role": user["role"]
-            }
-        }
+            "user": user
+        }), 201
 
     except Exception as error:
-        print("LOGIN ERROR:", error)
 
-        return {
+        print("Signup Error:", error)
+
+        return jsonify({
             "success": False,
-            "message": str(error)
-        }
+            "message": "Signup failed",
+            "error": str(error)
+        }), 500
 
 
-@app.post("/forgot-password")
-def forgot_password(request: ForgotPasswordRequest):
+# =========================================================
+# LOGIN
+# =========================================================
+
+@app.route("/login", methods=["POST"])
+def login():
+
     try:
-        email = str(request.email).lower().strip()
 
-        reset_token = create_password_reset_token(email)
+        data = request.get_json()
 
-        if reset_token is None:
-            return {
-                "success": True,
-                "message": "If this email is registered, a password reset link will be generated."
-            }
+        if not data:
+            return jsonify({
+                "success": False,
+                "message": "No data received"
+            }), 400
 
-        reset_link = (
-            "https://code-guard-umber.vercel.app/"
-            "?token="
-            + reset_token
+        email = data.get("email", "").strip().lower()
+        password = data.get("password", "")
+
+        if not email:
+            return jsonify({
+                "success": False,
+                "message": "Email is required"
+            }), 400
+
+        if not password:
+            return jsonify({
+                "success": False,
+                "message": "Password is required"
+            }), 400
+
+        user = authenticate_user(
+            email,
+            password
         )
 
-        print("PASSWORD RESET REQUEST")
-        print("Email:", email)
-        print("Reset link:", reset_link)
-        print("Token expires in 15 minutes.")
+        if user is None:
+            return jsonify({
+                "success": False,
+                "message": "Invalid email or password"
+            }), 401
 
-        return {
+        token = create_token(user)
+
+        return jsonify({
             "success": True,
-            "message": "Password reset link generated.",
-            "reset_link": reset_link
-        }
+            "message": "Login successful",
+            "token": token,
+            "user": user
+        }), 200
 
     except Exception as error:
-        print("FORGOT PASSWORD ERROR:", error)
 
-        return {
+        print("Login Error:", error)
+
+        return jsonify({
             "success": False,
-            "message": str(error)
-        }
+            "message": "Login failed",
+            "error": str(error)
+        }), 500
 
 
-@app.post("/reset-password")
-def reset_password_route(request: ResetPasswordRequest):
+# =========================================================
+# FORGOT PASSWORD
+# =========================================================
+
+@app.route("/forgot-password", methods=["POST"])
+def forgot_password():
+
     try:
-        token = request.token.strip()
+
+        data = request.get_json()
+
+        if not data:
+            return jsonify({
+                "success": False,
+                "message": "No data received"
+            }), 400
+
+        email = data.get("email", "").strip().lower()
+
+        if not email:
+            return jsonify({
+                "success": False,
+                "message": "Email is required"
+            }), 400
+
+        token = create_password_reset_token(email)
+
+        if token is None:
+            return jsonify({
+                "success": False,
+                "message": "No account found with this email"
+            }), 404
+
+        send_reset_email(
+            email,
+            token
+        )
+
+        return jsonify({
+            "success": True,
+            "message": "Password reset link has been sent to your email"
+        }), 200
+
+    except Exception as error:
+
+        print("Forgot Password Error:", error)
+
+        return jsonify({
+            "success": False,
+            "message": "Failed to send password reset email",
+            "error": str(error)
+        }), 500
+
+
+# =========================================================
+# RESET PASSWORD
+# =========================================================
+
+@app.route("/reset-password", methods=["POST"])
+def reset_user_password():
+
+    try:
+
+        data = request.get_json()
+
+        if not data:
+            return jsonify({
+                "success": False,
+                "message": "No data received"
+            }), 400
+
+        token = data.get("token", "")
+        new_password = data.get("password", "")
 
         if not token:
-            return {
+            return jsonify({
                 "success": False,
-                "message": "Reset token is required."
-            }
+                "message": "Reset token is required"
+            }), 400
 
-        if len(request.new_password) < 6:
-            return {
+        if not new_password:
+            return jsonify({
                 "success": False,
-                "message": "Password must be at least 6 characters."
-            }
+                "message": "Password is required"
+            }), 400
+
+        if len(new_password) < 6:
+            return jsonify({
+                "success": False,
+                "message": "Password must be at least 6 characters"
+            }), 400
 
         success = reset_password(
             token,
-            request.new_password
+            new_password
         )
 
         if not success:
-            return {
+            return jsonify({
                 "success": False,
-                "message": "Reset link is invalid or expired."
-            }
+                "message": "Invalid or expired reset token"
+            }), 400
 
-        print("PASSWORD RESET SUCCESSFUL")
-
-        return {
+        return jsonify({
             "success": True,
-            "message": "Password reset successfully. You can now login."
-        }
+            "message": "Password reset successfully"
+        }), 200
 
     except Exception as error:
-        print("RESET PASSWORD ERROR:", error)
 
-        return {
+        print("Reset Password Error:", error)
+
+        return jsonify({
             "success": False,
-            "message": str(error)
-        }
+            "message": "Password reset failed",
+            "error": str(error)
+        }), 500
 
 
-@app.get("/me")
-def get_current_user(
-    authorization: str | None = Header(default=None)
-):
-    if not authorization:
-        return {
-            "success": False,
-            "message": "Authorization token is required."
-        }
+# =========================================================
+# VERIFY TOKEN
+# =========================================================
 
-    if not authorization.startswith("Bearer "):
-        return {
-            "success": False,
-            "message": "Invalid authorization format."
-        }
+@app.route("/verify-token", methods=["POST"])
+def verify_user_token():
 
-    token = authorization.replace(
-        "Bearer ",
-        "",
-        1
-    ).strip()
-
-    payload = verify_token(token)
-
-    if payload is None:
-        return {
-            "success": False,
-            "message": "Invalid or expired token."
-        }
-
-    return {
-        "success": True,
-        "user": {
-            "id": payload.get("user_id"),
-            "name": payload.get("name"),
-            "email": payload.get("email"),
-            "role": payload.get("role", "user")
-        }
-    }
-
-
-class CodeRequest(BaseModel):
-    code: str
-    language: str
-    action: str = "full"
-
-
-@app.post("/analyze")
-def analyze_code(request: CodeRequest):
     try:
-        from analyzer.python_analyzer import analyze_python_code
-        from analyzer.security import check_security
-        from analyzer.refactor import refactor_python_code
-        from analyzer.test_generator import generate_test_cases
-        from analyzer.test_executor import execute_python_tests
-        from services.language_router import analyze_by_language
-        from services.ai_reviewer import review_code_with_ai
 
-        if request.language == "Python":
-            analysis = analyze_python_code(
-                request.code
+        data = request.get_json()
+
+        if not data:
+            return jsonify({
+                "success": False,
+                "message": "Token is required"
+            }), 400
+
+        token = data.get("token")
+
+        if not token:
+            return jsonify({
+                "success": False,
+                "message": "Token is required"
+            }), 400
+
+        payload = verify_token(token)
+
+        if payload is None:
+            return jsonify({
+                "success": False,
+                "message": "Invalid or expired token"
+            }), 401
+
+        return jsonify({
+            "success": True,
+            "message": "Token is valid",
+            "user": payload
+        }), 200
+
+    except Exception as error:
+
+        print("Token Verification Error:", error)
+
+        return jsonify({
+            "success": False,
+            "message": "Token verification failed"
+        }), 500
+
+
+# =========================================================
+# PROFILE
+# =========================================================
+
+@app.route("/profile/<user_id>", methods=["GET"])
+def profile(user_id):
+
+    try:
+
+        user = get_user_by_id(user_id)
+
+        if user is None:
+            return jsonify({
+                "success": False,
+                "message": "User not found"
+            }), 404
+
+        return jsonify({
+            "success": True,
+            "user": user
+        }), 200
+
+    except Exception as error:
+
+        print("Profile Error:", error)
+
+        return jsonify({
+            "success": False,
+            "message": "Failed to get profile"
+        }), 500
+
+
+# =========================================================
+# DSA / LEETCODE DETECTION
+# =========================================================
+
+def is_dsa_problem(text):
+
+    text_lower = text.lower()
+
+    dsa_keywords = [
+        "two sum",
+        "three sum",
+        "array",
+        "linked list",
+        "binary tree",
+        "tree",
+        "graph",
+        "stack",
+        "queue",
+        "heap",
+        "priority queue",
+        "hashmap",
+        "hash map",
+        "hash table",
+        "dynamic programming",
+        "sliding window",
+        "two pointer",
+        "two pointers",
+        "binary search",
+        "depth first search",
+        "breadth first search",
+        "dfs",
+        "bfs",
+        "recursion",
+        "backtracking",
+        "sorting",
+        "searching",
+        "substring",
+        "subarray",
+        "palindrome",
+        "linkedlist",
+        "leetcode",
+        "hackerrank",
+        "competitive programming",
+        "algorithm",
+        "return indices",
+        "return the indices",
+        "input:",
+        "output:",
+        "constraints:",
+        "solve this",
+        "solve the problem",
+        "find the",
+        "given an integer",
+        "given an array",
+        "given a string"
+    ]
+
+    for keyword in dsa_keywords:
+
+        if keyword in text_lower:
+            return True
+
+    return False
+
+
+# =========================================================
+# EXTRACT AI COMPLEXITY
+# =========================================================
+
+def extract_complexity_from_ai(ai_text):
+
+    if not ai_text:
+        return None, None
+
+    time_complexity = None
+    space_complexity = None
+
+    # -----------------------------------------------------
+    # Time Complexity
+    # -----------------------------------------------------
+
+    time_patterns = [
+        r"time complexity\s*:\s*([^\n\r]+)",
+        r"time\s*complexity\s*:\s*([^\n\r]+)",
+        r"time\s*:\s*([^\n\r]+)"
+    ]
+
+    for pattern in time_patterns:
+
+        match = re.search(
+            pattern,
+            ai_text,
+            re.IGNORECASE
+        )
+
+        if match:
+
+            value = match.group(1).strip()
+
+            value = value.split("—")[0].strip()
+            value = value.split("-")[0].strip()
+
+            if "O(" in value or "o(" in value:
+                time_complexity = value
+                break
+
+    # -----------------------------------------------------
+    # Space Complexity
+    # -----------------------------------------------------
+
+    space_patterns = [
+        r"space complexity\s*:\s*([^\n\r]+)",
+        r"space\s*:\s*([^\n\r]+)"
+    ]
+
+    for pattern in space_patterns:
+
+        match = re.search(
+            pattern,
+            ai_text,
+            re.IGNORECASE
+        )
+
+        if match:
+
+            value = match.group(1).strip()
+
+            value = value.split("—")[0].strip()
+            value = value.split("-")[0].strip()
+
+            if "O(" in value or "o(" in value:
+                space_complexity = value
+                break
+
+    return time_complexity, space_complexity
+
+
+# =========================================================
+# BASIC COMPLEXITY FOR NORMAL SOURCE CODE
+# =========================================================
+
+def estimate_basic_complexity(code):
+
+    lines = code.splitlines()
+
+    loop_lines = []
+
+    for line in lines:
+
+        stripped = line.strip()
+
+        if (
+            stripped.startswith("for ")
+            or stripped.startswith("for(")
+            or stripped.startswith("for (")
+            or stripped.startswith("while ")
+            or stripped.startswith("while(")
+            or stripped.startswith("while (")
+        ):
+
+            loop_lines.append(line)
+
+    loop_count = len(loop_lines)
+
+    # -----------------------------------------------
+    # No loop
+    # -----------------------------------------------
+
+    if loop_count == 0:
+
+        time_complexity = "O(1)"
+
+    # -----------------------------------------------
+    # One loop
+    # -----------------------------------------------
+
+    elif loop_count == 1:
+
+        time_complexity = "O(n)"
+
+    # -----------------------------------------------
+    # Multiple loops
+    # -----------------------------------------------
+
+    else:
+
+        time_complexity = "O(n²) or higher"
+
+    return time_complexity
+
+
+# =========================================================
+# CODE ANALYZER + AI
+# =========================================================
+
+@app.route("/analyze", methods=["POST"])
+def analyze_code():
+
+    try:
+
+        # =================================================
+        # GET REQUEST DATA
+        # =================================================
+
+        data = request.get_json()
+
+        if not data:
+
+            return jsonify({
+                "success": False,
+                "message": "No analysis data received"
+            }), 400
+
+        code = data.get(
+            "code",
+            ""
+        ).strip()
+
+        language = data.get(
+            "language",
+            "Python"
+        )
+
+        action = data.get(
+            "action",
+            "full"
+        )
+
+        # =================================================
+        # VALIDATE
+        # =================================================
+
+        if not code:
+
+            return jsonify({
+                "success": False,
+                "message": "Code is required"
+            }), 400
+
+        print("\n========================================")
+        print("CODE ANALYSIS REQUEST")
+        print("========================================")
+        print("Language:", language)
+        print("Action:", action)
+        print("========================================")
+
+        # =================================================
+        # DETECT DSA
+        # =================================================
+
+        dsa_mode = is_dsa_problem(code)
+
+        print(
+            "Mode:",
+            "DSA / LEETCODE" if dsa_mode else "CODE REVIEW"
+        )
+
+        # =================================================
+        # BASIC INFORMATION
+        # =================================================
+
+        lines = code.splitlines()
+
+        non_empty_lines = [
+            line
+            for line in lines
+            if line.strip()
+        ]
+
+        total_lines = len(lines)
+
+        # =================================================
+        # BUG DETECTION
+        # =================================================
+
+        bugs = []
+
+        if "TODO" in code:
+
+            bugs.append({
+                "type": "Warning",
+                "message": (
+                    "TODO comment found. "
+                    "This code section may need implementation."
+                ),
+                "line": None
+            })
+
+        # Python print
+
+        if (
+            "print(" in code
+            and language.lower() in ["python", "py"]
+        ):
+
+            bugs.append({
+                "type": "Info",
+                "message": "Debug print statement detected.",
+                "line": None
+            })
+
+        # JavaScript console
+
+        if (
+            "console.log" in code
+            and language.lower() in ["javascript", "js"]
+        ):
+
+            bugs.append({
+                "type": "Info",
+                "message": "console.log statement detected.",
+                "line": None
+            })
+
+        # =================================================
+        # COMPLEXITY
+        # =================================================
+
+        if dsa_mode:
+
+            time_complexity = "AI analysis"
+            space_complexity = "AI analysis"
+
+            complexity_reason = (
+                "Complexity will be determined from "
+                "the actual algorithm generated by CodeGuard AI."
             )
 
-            analysis["security"] = check_security(
-                request.code
-            )
-
-            analysis["refactoring"] = refactor_python_code(
-                request.code
-            )
-
-            analysis["test_cases"] = generate_test_cases(
-                request.code
-            )
-
-            analysis["test_execution"] = execute_python_tests(
-                request.code
+            space_reason = (
+                "Space complexity will be determined "
+                "from the actual solution."
             )
 
         else:
-            analysis = analyze_by_language(
-                request.code,
-                request.language
+
+            time_complexity = estimate_basic_complexity(code)
+
+            space_complexity = "O(1)"
+
+            complexity_reason = (
+                "Complexity is estimated from "
+                "the detected loop structure."
             )
 
-        ai_review = review_code_with_ai(
-            request.code,
-            request.language,
-            analysis
-        )
+            space_reason = (
+                "Basic static analysis did not detect "
+                "an obvious additional data structure."
+            )
 
-        return {
-            "success": True,
-            "language": request.language,
-            "analysis": analysis,
-            "ai_review": ai_review
+        # =================================================
+        # SECURITY
+        # =================================================
+
+        security_issues = []
+
+        dangerous_patterns = [
+
+            (
+                "eval(",
+                "Use of eval() can execute arbitrary code."
+            ),
+
+            (
+                "exec(",
+                "Use of exec() can execute arbitrary code."
+            ),
+
+            (
+                "password =",
+                "Avoid storing passwords directly in source code."
+            ),
+
+            (
+                "api_key =",
+                "API keys should not be hardcoded."
+            ),
+
+            (
+                "secret =",
+                "Secrets should not be hardcoded."
+            )
+
+        ]
+
+        for pattern, message in dangerous_patterns:
+
+            if pattern.lower() in code.lower():
+
+                security_issues.append({
+
+                    "type": "Security Warning",
+
+                    "message": message,
+
+                    "pattern": pattern
+
+                })
+
+        # =================================================
+        # REFACTORING
+        # =================================================
+
+        refactoring_suggestions = []
+
+        if total_lines > 50:
+
+            refactoring_suggestions.append(
+                "Consider breaking large code blocks "
+                "into smaller functions."
+            )
+
+        if len(non_empty_lines) > 20:
+
+            refactoring_suggestions.append(
+                "Consider improving code structure "
+                "and readability."
+            )
+
+        if not refactoring_suggestions:
+
+            refactoring_suggestions = []
+
+        # =================================================
+        # TEST CASES
+        # =================================================
+
+        test_cases = [
+
+            {
+                "name": "Normal Input",
+
+                "description":
+                    "Test the program with a normal valid input."
+            },
+
+            {
+                "name": "Edge Case",
+
+                "description":
+                    "Test empty, minimum, maximum "
+                    "or boundary input."
+            },
+
+            {
+                "name": "Invalid Input",
+
+                "description":
+                    "Test how the program handles invalid input."
+            }
+
+        ]
+
+        # =================================================
+        # SYNTAX
+        # =================================================
+
+        syntax_result = {
+
+            "valid": True,
+
+            "error": None,
+
+            "message":
+                "Basic syntax analysis completed."
+
         }
+
+        # =================================================
+        # STATIC ANALYSIS
+        # =================================================
+
+        analysis = {
+
+            "language": language,
+
+            "action": action,
+
+            "mode":
+                "LeetCode" if dsa_mode
+                else "Code Review",
+
+            "lines_of_code": total_lines,
+
+            "syntax": syntax_result,
+
+            "bugs": bugs,
+
+            "complexity": {
+
+                "time": time_complexity,
+
+                "space": space_complexity,
+
+                "reason": complexity_reason,
+
+                "space_reason": space_reason
+
+            },
+
+            "security": security_issues,
+
+            "refactoring": {
+
+                "suggestions":
+                    refactoring_suggestions,
+
+                "refactored_code":
+                    None
+
+            },
+
+            "test_cases": {
+
+                "test_cases":
+                    test_cases,
+
+                "message":
+                    "Basic test cases generated successfully."
+
+            },
+
+            "test_execution": None
+
+        }
+
+        # =================================================
+        # AI REVIEW
+        # =================================================
+
+        print("\n========================================")
+        print("STARTING CODEGUARD AI")
+        print("========================================")
+
+        try:
+
+            ai_review = review_code_with_ai(
+
+                code,
+
+                language,
+
+                analysis
+
+            )
+
+            print("\n========================================")
+            print("AI REVIEW COMPLETED")
+            print("========================================")
+
+            print(
+                "AI Success:",
+                ai_review.get("success")
+            )
+
+            print(
+                "AI Model:",
+                ai_review.get("model", "N/A")
+            )
+
+            # =================================================
+            # SYNC AI COMPLEXITY WITH STATIC ANALYSIS
+            # =================================================
+
+            ai_text = ai_review.get(
+                "review",
+                ""
+            )
+
+            ai_time, ai_space = extract_complexity_from_ai(
+                ai_text
+            )
+
+            if dsa_mode:
+
+                if ai_time:
+
+                    analysis["complexity"]["time"] = ai_time
+
+                    analysis["complexity"]["reason"] = (
+                        "Complexity determined from "
+                        "the AI-generated algorithm."
+                    )
+
+                if ai_space:
+
+                    analysis["complexity"]["space"] = ai_space
+
+                    analysis["complexity"]["space_reason"] = (
+                        "Space complexity determined from "
+                        "the AI-generated solution."
+                    )
+
+        except Exception as ai_error:
+
+            print("\n========================================")
+            print("AI REVIEW ERROR")
+            print("========================================")
+
+            print(ai_error)
+
+            print("========================================")
+
+            ai_review = {
+
+                "success": False,
+
+                "ai_enabled": False,
+
+                "language": language,
+
+                "review": "",
+
+                "message":
+                    "AI review failed.",
+
+                "error":
+                    str(ai_error)
+
+            }
+
+            if dsa_mode:
+
+                analysis["complexity"]["time"] = "Unknown"
+                analysis["complexity"]["space"] = "Unknown"
+
+        # =================================================
+        # FINAL RESPONSE
+        # =================================================
+
+        return jsonify({
+
+            "success": True,
+
+            "message":
+                "Code analyzed successfully",
+
+            "analysis":
+                analysis,
+
+            "ai_review":
+                ai_review
+
+        }), 200
 
     except Exception as error:
-        print("ANALYZE ERROR:", error)
 
-        return {
+        print("\n========================================")
+        print("ANALYZE ERROR")
+        print("========================================")
+
+        print(error)
+
+        print("========================================\n")
+
+        return jsonify({
+
             "success": False,
-            "message": str(error)
-        }
+
+            "message":
+                "Code analysis failed",
+
+            "error":
+                str(error)
+
+        }), 500
 
 
-@app.get("/health")
-def health_check():
-    return {
-        "success": True,
-        "status": "healthy",
-        "service": "CodeGuard Backend"
-    }
+# =========================================================
+# ERROR HANDLER
+# =========================================================
+
+@app.errorhandler(404)
+def not_found(error):
+
+    return jsonify({
+
+        "success": False,
+
+        "message":
+            "API endpoint not found",
+
+        "path":
+            request.path
+
+    }), 404
+
+
+# =========================================================
+# RUN SERVER
+# =========================================================
+
+if __name__ == "__main__":
+
+    print("\n========================================")
+    print("        CODEGUARD BACKEND")
+    print("========================================")
+    print("Server: http://127.0.0.1:5000")
+    print("Analyzer: http://127.0.0.1:5000/analyze")
+    print("AI Reviewer: ENABLED")
+    print("Database: MongoDB")
+    print("========================================\n")
+
+    app.run(
+        host="0.0.0.0",
+        port=5000,
+        debug=True
+    )

@@ -2,6 +2,10 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import secrets
 import os
+import smtplib
+
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 import bcrypt
 import jwt
@@ -10,16 +14,8 @@ from dotenv import load_dotenv
 from database import users_collection
 
 
-# =====================================================
-# LOAD ENVIRONMENT VARIABLES
-# =====================================================
-
 load_dotenv()
 
-
-# =====================================================
-# JWT SETTINGS
-# =====================================================
 
 SECRET_KEY = os.getenv(
     "JWT_SECRET_KEY",
@@ -30,132 +26,81 @@ ALGORITHM = "HS256"
 
 TOKEN_EXPIRE_HOURS = 24
 
-
-# =====================================================
-# PASSWORD RESET SETTINGS
-# =====================================================
-
 RESET_TOKEN_EXPIRE_MINUTES = 15
 
+MAIL_USERNAME = os.getenv("MAIL_USERNAME")
 
-# =====================================================
-# CURRENT UTC TIME
-# =====================================================
+MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")
+
+FRONTEND_URL = os.getenv(
+    "FRONTEND_URL",
+    "http://localhost:5173"
+)
+
 
 def get_current_time():
+    return datetime.now(timezone.utc)
 
-    return datetime.now(
-        timezone.utc
-    )
-
-
-# =====================================================
-# CREATE USER
-# =====================================================
 
 def create_user(name, email, password):
 
-    email = email.lower().strip()
-
     name = name.strip()
 
-    # Check existing user
+    email = email.lower().strip()
+
     existing_user = users_collection.find_one({
-
         "email": email
-
     })
 
     if existing_user:
-
         return None
 
-    # Hash password
     hashed_password = bcrypt.hashpw(
-
         password.encode("utf-8"),
-
         bcrypt.gensalt()
-
     ).decode("utf-8")
 
-    # Current time
-    created_at = get_current_time()
-
-    # User document
     user = {
-
         "name": name,
-
         "email": email,
-
         "password_hash": hashed_password,
-
         "role": "user",
-
-        "created_at": created_at,
-
+        "created_at": get_current_time(),
         "last_login": None,
-
         "login_count": 0
-
     }
 
-    # Save to MongoDB
-    result = users_collection.insert_one(
-        user
-    )
+    result = users_collection.insert_one(user)
 
     return {
-
         "id": str(result.inserted_id),
-
         "name": name,
-
         "email": email,
-
         "role": "user"
-
     }
 
-
-# =====================================================
-# AUTHENTICATE USER
-# =====================================================
 
 def authenticate_user(email, password):
 
     email = email.lower().strip()
 
-    # Find user
     user = users_collection.find_one({
-
         "email": email
-
     })
 
     if not user:
-
         return None
 
-    # Get stored password
-    stored_password = user.get(
-        "password_hash"
-    )
+    stored_password = user.get("password_hash")
 
     if not stored_password:
-
         return None
 
-    # Check password
     try:
 
         password_match = bcrypt.checkpw(
-
             password.encode("utf-8"),
-
             stored_password.encode("utf-8")
-
         )
 
     except Exception:
@@ -163,130 +108,65 @@ def authenticate_user(email, password):
         return None
 
     if not password_match:
-
         return None
 
-    # Get role
-    role = user.get(
-        "role",
-        "user"
-    )
+    role = user.get("role", "user")
 
-    # Login information
-    current_time = get_current_time()
+    login_count = user.get("login_count", 0) + 1
 
-    old_login_count = user.get(
-        "login_count",
-        0
-    )
-
-    new_login_count = old_login_count + 1
-
-    # Update login information
     users_collection.update_one(
-
         {
             "_id": user["_id"]
         },
-
         {
             "$set": {
-
-                "last_login": current_time,
-
-                "login_count": new_login_count,
-
+                "last_login": get_current_time(),
+                "login_count": login_count,
                 "role": role
-
             }
-
         }
-
     )
 
     return {
-
         "id": str(user["_id"]),
-
-        "name": user.get(
-            "name",
-            "User"
-        ),
-
-        "email": user.get(
-            "email",
-            email
-        ),
-
+        "name": user.get("name", "User"),
+        "email": user.get("email", email),
         "role": role
-
     }
 
-
-# =====================================================
-# CREATE JWT TOKEN
-# =====================================================
 
 def create_token(user):
 
     expire = (
-
-        datetime.now(
-            timezone.utc
-        )
-
-        + timedelta(
-            hours=TOKEN_EXPIRE_HOURS
-        )
-
+        datetime.now(timezone.utc)
+        + timedelta(hours=TOKEN_EXPIRE_HOURS)
     )
 
     payload = {
-
         "user_id": user["id"],
-
         "name": user["name"],
-
         "email": user["email"],
-
-        "role": user.get(
-            "role",
-            "user"
-        ),
-
+        "role": user.get("role", "user"),
         "exp": expire
-
     }
 
     token = jwt.encode(
-
         payload,
-
         SECRET_KEY,
-
         algorithm=ALGORITHM
-
     )
 
     return token
 
-
-# =====================================================
-# VERIFY JWT TOKEN
-# =====================================================
 
 def verify_token(token):
 
     try:
 
         payload = jwt.decode(
-
             token,
-
             SECRET_KEY,
-
             algorithms=[ALGORITHM]
-
         )
 
         return payload
@@ -304,25 +184,13 @@ def verify_token(token):
         return None
 
 
-# =====================================================
-# CHECK OWNER
-# =====================================================
-
 def is_owner(user):
 
     if not user:
-
         return False
 
-    return user.get(
-        "role",
-        "user"
-    ) == "owner"
+    return user.get("role", "user") == "owner"
 
-
-# =====================================================
-# GET USER BY ID
-# =====================================================
 
 def get_user_by_id(user_id):
 
@@ -331,47 +199,20 @@ def get_user_by_id(user_id):
         from bson import ObjectId
 
         user = users_collection.find_one({
-
             "_id": ObjectId(user_id)
-
         })
 
         if not user:
-
             return None
 
         return {
-
             "id": str(user["_id"]),
-
-            "name": user.get(
-                "name",
-                "User"
-            ),
-
-            "email": user.get(
-                "email",
-                ""
-            ),
-
-            "role": user.get(
-                "role",
-                "user"
-            ),
-
-            "created_at": user.get(
-                "created_at"
-            ),
-
-            "last_login": user.get(
-                "last_login"
-            ),
-
-            "login_count": user.get(
-                "login_count",
-                0
-            )
-
+            "name": user.get("name", "User"),
+            "email": user.get("email", ""),
+            "role": user.get("role", "user"),
+            "created_at": user.get("created_at"),
+            "last_login": user.get("last_login"),
+            "login_count": user.get("login_count", 0)
         }
 
     except Exception:
@@ -379,171 +220,224 @@ def get_user_by_id(user_id):
         return None
 
 
-# =====================================================
-# CREATE PASSWORD RESET TOKEN
-# =====================================================
+def send_reset_email(email, token):
+
+    if not MAIL_USERNAME or not MAIL_PASSWORD:
+
+        raise Exception(
+            "Gmail SMTP credentials are not configured in .env"
+        )
+
+    reset_link = (
+        f"{FRONTEND_URL}/reset-password?token={token}"
+    )
+
+    message = MIMEMultipart("alternative")
+
+    message["Subject"] = "CodeGuard - Reset Your Password"
+
+    message["From"] = MAIL_USERNAME
+
+    message["To"] = email
+
+    text_content = f"""
+Hello,
+
+We received a request to reset your CodeGuard password.
+
+Use the following link to reset your password:
+
+{reset_link}
+
+This link will expire in {RESET_TOKEN_EXPIRE_MINUTES} minutes.
+
+If you did not request a password reset, you can safely ignore this email.
+
+Regards,
+CodeGuard Team
+"""
+
+    html_content = f"""
+<html>
+<body>
+
+<h2>CodeGuard Password Reset</h2>
+
+<p>Hello,</p>
+
+<p>
+We received a request to reset your CodeGuard password.
+</p>
+
+<p>
+Click the button below to reset your password:
+</p>
+
+<p>
+<a href="{reset_link}"
+style="
+display:inline-block;
+padding:12px 20px;
+background:#2563eb;
+color:white;
+text-decoration:none;
+border-radius:6px;
+">
+Reset Password
+</a>
+</p>
+
+<p>
+Or copy this link into your browser:
+</p>
+
+<p>
+{reset_link}
+</p>
+
+<p>
+This link will expire in {RESET_TOKEN_EXPIRE_MINUTES} minutes.
+</p>
+
+<p>
+If you did not request a password reset, you can safely ignore this email.
+</p>
+
+<p>
+Regards,<br>
+CodeGuard Team
+</p>
+
+</body>
+</html>
+"""
+
+    text_part = MIMEText(
+        text_content,
+        "plain"
+    )
+
+    html_part = MIMEText(
+        html_content,
+        "html"
+    )
+
+    message.attach(text_part)
+
+    message.attach(html_part)
+
+    with smtplib.SMTP(
+        "smtp.gmail.com",
+        587
+    ) as server:
+
+        server.starttls()
+
+        server.login(
+            MAIL_USERNAME,
+            MAIL_PASSWORD
+        )
+
+        server.sendmail(
+            MAIL_USERNAME,
+            email,
+            message.as_string()
+        )
+
 
 def create_password_reset_token(email):
 
     email = email.lower().strip()
 
-    # Find user
     user = users_collection.find_one({
-
         "email": email
-
     })
 
     if not user:
-
         return None
 
-    # Generate secure random token
     raw_token = secrets.token_urlsafe(48)
 
-    # Hash token before storing
     token_hash = hashlib.sha256(
-
         raw_token.encode("utf-8")
-
     ).hexdigest()
 
-    # Token expiry
     expires_at = (
-
         get_current_time()
-
-        + timedelta(
-            minutes=RESET_TOKEN_EXPIRE_MINUTES
-        )
-
+        + timedelta(minutes=RESET_TOKEN_EXPIRE_MINUTES)
     )
 
-    # Store hashed token
     users_collection.update_one(
-
         {
             "_id": user["_id"]
         },
-
         {
             "$set": {
-
                 "reset_token_hash": token_hash,
-
                 "reset_token_expires": expires_at
-
             }
-
         }
-
     )
 
-    # Return raw token
-    # This will later be sent through email
     return raw_token
 
 
-# =====================================================
-# RESET PASSWORD
-# =====================================================
-
 def reset_password(token, new_password):
 
-    # Hash received token
     token_hash = hashlib.sha256(
-
         token.encode("utf-8")
-
     ).hexdigest()
 
-    # Find user using hashed token
     user = users_collection.find_one({
-
         "reset_token_hash": token_hash
-
     })
 
     if not user:
-
         return False
 
-    # Get expiry time
     expires_at = user.get(
         "reset_token_expires"
     )
 
     if not expires_at:
-
         return False
 
-    # Current time
     current_time = get_current_time()
 
-    # Check expiry
     if expires_at < current_time:
 
         users_collection.update_one(
-
             {
                 "_id": user["_id"]
             },
-
             {
                 "$unset": {
-
                     "reset_token_hash": "",
-
                     "reset_token_expires": ""
-
                 }
-
             }
-
         )
 
         return False
 
-    # =================================================
-    # HASH NEW PASSWORD
-    # =================================================
-
     hashed_password = bcrypt.hashpw(
-
         new_password.encode("utf-8"),
-
         bcrypt.gensalt()
-
     ).decode("utf-8")
 
-    # =================================================
-    # UPDATE PASSWORD
-    # =================================================
-
     users_collection.update_one(
-
         {
             "_id": user["_id"]
         },
-
         {
-
             "$set": {
-
                 "password_hash": hashed_password
-
             },
-
             "$unset": {
-
                 "reset_token_hash": "",
-
                 "reset_token_expires": ""
-
             }
-
         }
-
     )
 
     return True
